@@ -1,0 +1,150 @@
+---
+title: "Week 3 NYPD data"
+output:
+  html_document: default
+  pdf_document: default
+date: '2022-03-16'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Set up 
+Add the libraries that you will need for functions within the code. Note that these libraries will need to be installed, if not already. The installs are not recommended to be included within the R Markdown.
+
+
+## Read in the dataset
+The data is from the City of New York's historical archives of Shootings recorded by the NYPD. This data set contains history of incidents and murders going back a few years by location and demographics. 
+```{r dataread}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+basedata <- read_csv(url_in)
+```
+## View the data set. I am interested in looking at the yearly trend of incidents and murders and also by Victim sex. 
+```{r viewdata}
+summary(basedata)
+```
+
+## Tidy the data set 
+Change the Occur date to date format. Then add a new variable Year.
+```{r tidydata}
+basedata <- basedata %>%
+    mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+
+basedata <- basedata %>%  
+    mutate(YEAR = year(OCCUR_DATE))  
+```
+View a Summary of the base data to see what kind of values are in the remaining fields that aren't visible on the screen 
+```{r summary}
+summary(basedata)
+```
+
+## Visualize the data
+Visualize the trend of shootings (both Murders and incidents individually) by year 
+```{r visualize, ECHO = FALSE}
+summary_by_year <- basedata %>%
+  count(YEAR) 
+
+summary_by_year <- summary_by_year %>%
+  mutate(Incidents = n)
+
+ggplot1 <- summary_by_year %>%
+  ggplot(aes(x=YEAR, y = Incidents)) +
+  geom_line(aes(color = "Incidents")) +
+  geom_point(aes(color = "Incidents")) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle= 90)) +
+  labs(title = "Yearly trend of shootings", y = NULL)
+
+plot(ggplot1)
+
+  Murders_by_year <- basedata %>%
+  filter(STATISTICAL_MURDER_FLAG == 'TRUE') %>%
+  count(YEAR) 
+
+
+
+Murders_by_year <- Murders_by_year %>%
+  mutate(Murders = n)
+
+ggplot2 <- Murders_by_year %>%
+  ggplot(aes(x=YEAR, y = Murders)) +
+  geom_line(aes(color = "Murders")) +
+  geom_point(aes(color = "Murders")) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle= 90)) +
+  labs(title = "Yearly trend of Murders", y = NULL)
+
+plot(ggplot2)
+
+```
+
+### Recognizing and accounting for Bias. My Bias - There were probably more Female victims than Male victims
+
+```{r Bias, ECHO = FALSE}
+Victims_Summary_Male <- basedata %>%
+  filter(VIC_SEX == 'M') %>%
+  count(YEAR)
+
+Victims_Summary_Male <- Victims_Summary_Male %>%
+  mutate(Male_victims = n)
+
+Victims_Summary_Female <- basedata %>%
+  filter(VIC_SEX == 'F') %>%
+  count(YEAR)
+
+Victims_Summary_Female <- Victims_Summary_Female %>%
+  mutate(Female_victims = n)
+
+Victims_Summary <- Victims_Summary_Female %>%
+  left_join(Victims_Summary_Male, by = c("YEAR"))
+  
+
+ggplot3 <- Victims_Summary %>%
+  ggplot(aes(x=YEAR, y = Male_victims)) +
+  geom_line(aes(color = "Male Victims")) +
+  geom_point(aes(color = "Male Victims")) +
+  geom_line(aes(y = Female_victims, color = "Female Victims")) +
+  geom_point(aes(y = Female_victims, color = "Female Victims")) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle= 90)) +
+  labs(title = "Victims trend by year", y = NULL)
+
+plot(ggplot3)
+
+```
+## The above observation clearly shows that the bias of assuming there are more female victims than males is wrong. 
+
+## Model Data
+
+### Linear Model to determine whether or how the Murders are related to Incidents. Predict Murders based on this model and compare with the actuals 
+```{r Model, ECHO = FALSE}
+Incidents_and_Murders <- summary_by_year %>%
+  left_join(Murders_by_year, by = c("YEAR"))
+
+mod <- lm(Murders ~ Incidents, data = Incidents_and_Murders)
+summary(mod)
+
+
+Incidents_and_Murders <- Incidents_and_Murders %>%
+  mutate(pred = predict(mod))
+
+ggplot4 <- Incidents_and_Murders %>%
+  ggplot() +
+  geom_point(aes(x= Incidents, y= Murders), color= "blue") +
+  geom_point(aes(x= Incidents, y= pred), color= "orange") 
+
+plot(ggplot4)
+```
+### The conclusion: The number of murders is linearly dependent on the number of total incidents. Bias based on victims gender is incorrect. 
+
+  
